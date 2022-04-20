@@ -7,13 +7,14 @@ Proteomics.data.analysis
 MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
 <!-- badges: end -->
 
-The `Proteomics.data.analysis` package is an internal package written by
-the MRC Toxicology unit and Proteomics and
+The `Proteomics.data.analysis` package was prepared by the MRC
+Toxicology unit and Proteomics and
 [bioinformaticsfacilities](https://github.com/MRCToxBioinformatics) to
 provide training in the basics of proteomics analyses. It assume the
-user’s data has been processed by Proteome Discoverer. Tutorials take
-the form of vignettes and can be viewed by installing the package or
-navigating to
+user’s data has been processed by Proteome Discoverer.
+
+Tutorials take the form of vignettes and can be viewed by installing the
+package or navigating to
 <https://mrctoxbioinformatics.github.io/Proteomics_data_analysis/>
 
 ## Install
@@ -31,3 +32,6 @@ available vignettes with:
 ``` r
 browseVignettes("Proteomics.data.analysis")
 ```
+
+Or else navigate to
+<https://mrctoxbioinformatics.github.io/Proteomics_data_analysis/>
