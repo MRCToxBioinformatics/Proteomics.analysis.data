@@ -33,7 +33,9 @@ Imports:
     naniar,
     stringr,
     tibble,
-    tidyr
+    tidyr,
+    gplots,
+    iq
 Depends: 
     R (>= 2.10)
 URL: https://mrctoxbioinformatics.github.io/Proteomics_data_analysis/
