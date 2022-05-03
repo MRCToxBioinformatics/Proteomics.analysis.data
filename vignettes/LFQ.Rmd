@@ -34,10 +34,14 @@ library(tidyr)
 
 We start with the peptide-level output from Proteome Discoverer (PD). This experiment was designed to identify RNA-binding proteins (RBP) in the U-2 OS cell line using the OOPS method [@http://zotero.org/users/5634351/items/EJHWF46N] with a comparison of RNase +/- used to separate RBPs from background non-specific proteins. 4 replicate experiments were performed, where the RNase +/- experiments were performed from the same OOPS interface. For each LFQ run, approximately the same quantity of peptides were injected, based on quantification of peptide concentration post trypsin digestion. This data is not published but the aim of the experiment is equivalent to Figure 2e in the original OOPS paper[@http://zotero.org/users/5634351/items/EJHWF46N].  
 
-The data we will use is available through this package. This is simply a `PeptideGroups.txt` file from PD which has been read into memory using `read.delim(<PeptideGroups.txt>")`, where `<PeptideGroups.txt>` is the path to the PeptideGroups file.
+The data we will use is available through this package. 
 ```{r}
-pep_data <- lfq_all_oops_rnase_pep
+pep_infile <- system.file(
+  "extdata", "RBPMap_RNase_pilot_3/LFQ_OOPS_RNase_PeptideGroups.txt", 
+  package = "Proteomics.data.analysis"
+)
 
+pep_data <- read.delim(pep_infile)
 ```
 
 We can explore the structure of the input data using `str`. We see that we have a `data.frame()` with `r nrow(pep_data)` rows and `r ncol(pep_data)` columns. The most important columns to us are:
@@ -172,8 +176,7 @@ So in this case, we can see that the most common missing value patterns are:
 2. Missing in all samples.
 3. Missing in all the other samples, except RNase negative replicate 4
 
-
-RNase negative replicate 4 had slightly lower overall petide intensities and appears to be somewhat of an outlier. In this case, we will retain the sample but in other cases, this may warrant further exploration and potentially removal of a sample.
+RNase negative replicate 4 had slightly lower overall peptide intensities and appears to be somewhat of an outlier. In this case, we will retain the sample but in other cases, this may warrant further exploration and potentially removal of a sample.
 
 Finally, we recode the abundances to binary (present/absent) and plot the missing data structure as a heatmap (missing = black). Beyond the aforementioned observations regarding RNase negative replicate 4, there's no clear structure in the missing values. This is what we would expect for LFQ, where data is largely missing at random (MAR). There are methods to impute values MAR, but, providing what we are after is protein-level abundance, it is usually more appropriate to perform the protein inference using a method that can accommodate missing values.
 
@@ -388,7 +391,7 @@ Below we apply the above function to each of our proteins of interest.
 proteins_of_interest %>% lapply(plot_pep_and_protein)
 ```
 
-Looking at these examples, we can see that MaxLFQ is often estimating slightly higher abundances but with a very similar profile across the samples is very similar, so the summarisation approach is unlikely to affect the downstream analysis. It's not clear which of the two approaches is more correct in the examples above, but the publication proposing the robust protein inference (see [here](https://pubmed.ncbi.nlm.nih.gov/32321741/)) does indicate it gives more accurate fold-change estimates overall.
+Looking at these examples, we can see that MaxLFQ is often estimating slightly higher abundances but with a very similar profile across the samples, so the summarisation approach is unlikely to affect the downstream analysis. It's not clear which of the two approaches is more correct in the examples above, but the publication proposing the robust protein inference (see [here](https://pubmed.ncbi.nlm.nih.gov/32321741/)) does indicate it gives more accurate fold-change estimates overall.
 
 We have now processed our peptide-level LFQ abundances and obtained protein-level abundances, from which we can perform our downstream analyses.
 
