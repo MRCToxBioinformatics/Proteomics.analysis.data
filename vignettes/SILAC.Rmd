@@ -2,7 +2,9 @@
 title: "Processing and QC of SILAC data"
 author: "Tom Smith"
 date: "`r Sys.Date()`"
-output: rmarkdown::html_vignette
+output:
+  html_document:
+    code_folding: show
 bibliography: bib.json
 vignette: >
   %\VignetteIndexEntry{SILAC}
@@ -59,12 +61,12 @@ Calculating the incorporation for a given peptide is simple, e.g  H/(H+L)  for a
 Importantly, note that there is a good correlation between the light and heavy intensities, regardless whether either or both isotopes were from a spectrum match, or one peptide isotope was identified based on the expected 'mass shift' relative to the peptide-spectrum match (PSM) for the cognate isotope. This indicates that identified isotope pairs are correct and the the quantification values are trustable. 
 
 
-```{r, fig.height=3, fig.width=6, echo=FALSE}
-# The cRAP fasta file for this experiment is part of the camprotR package.
+```{r, fig.height=3, fig.width=6, message=FALSE}
+# The cRAP fasta file for this experiment is part of this package.
 # For a real experiment, make sure to the use the same cRAP fasta that was used in PD
 crap_fasta_inf <- system.file(
   "extdata", "cRAP_20190401.fasta.gz", 
-  package = "camprotR"
+  package = "Proteomics.data.analysis"
 )
 
 # psm_silac_p4 and pep_silac_p4 are loaded from the `camprotR` package 
@@ -83,7 +85,7 @@ print(incorporation_results$HL_correlation)
 
 The median observed incorporation for the mixed sample is 50.8 at the peptide-level and 50.5 at the protein level. Correcting for the mixing proportions this gives us incorporation rate estimates just over 100%, which suggests the true incorporation rate is likely to be very close to 100%. We are only using a toy data set here with 100 proteins. With the full data, we would get a more accurate estimate.
 
-```{r, fig.height=4, fig.width=4}
+```{r, fig.height=4, fig.width=4, message=FALSE}
 print(incorporation_results$peptide_incorporation)
 print(incorporation_results$protein_incorporation)
 ```
@@ -95,7 +97,7 @@ Now, onto some experimental data. Here, we process data from an OOPS [@http://zo
 
 In total, we have 4 SILAC runs, representing 4 separate plates of U-2 OS cells. Two plates (replicate 1 & 2) were Heavy for CL and two plates (replicates 3 & 4) were Light for CL. This is called a 'label' swap/switch and helps to ensure the results are independent of the labelling scheme.
 
-The first step is to read in the data and remove contaminant proteins and features without quantification data. These were defined using the cRAP database. Below, we parse the cRAP FASTA to extract the IDs for the cRAP proteins, in both 'cRAP' format and Uniprot IDs for these proteins.
+The first step is to read in the data. As part of this, we will remove contaminant proteins and features without quantification data. These were defined using the cRAP database. Below, we parse the cRAP FASTA to extract the IDs for the cRAP proteins, in both 'cRAP' format and Uniprot IDs for these proteins.
 
 ```{r}
 # Load the cRAP FASTA used for the PD search
@@ -110,17 +112,26 @@ crap_accessions <- crap_fasta %>%
 ```
 
 
-We can then supply these cRAP protein IDs to `camprotR::parse_features` which will remove features which may originate from contaminants, as well as features which don't have a unique master protein. See `?parse_features` for further details, including the removal of 'associated cRAP'. `parse_features` will output messages about the number of features at each stage in the filtering.
+We can then supply these cRAP protein IDs to `camprotR::parse_features` which will parse the PD output and remove features which may originate from contaminants, as well as features which don't have a unique master protein. See `?parse_features` for further details, including the removal of 'associated cRAP'. `parse_features` will output messages about the number of features at each stage in the filtering.
 
 ```{r}
-# These files are part this package 
-pep_data <- list(all_pep_oops_1, all_pep_oops_2, all_pep_oops_3, all_pep_oops_4)
-names(pep_data) <- c('pep_1', 'pep_2', 'pep_3', 'pep_4')
+# These files are part this package
+replicates <- 1:4
+pep_infiles <- file.path('OOPS_SILAC', paste0('OOPS_', replicates, '_PeptideGroups.txt'))
+names(pep_infiles) <- replicates
 
+print(pep_infiles)
+```
+
+```{r, message=FALSE}
 # We use lapply below to run the same function on each element of the list pep_data
 # This is easier than running a for loop since the output is a new named list 
 pep_data_parsed <- lapply(
-  pep_data, function(infdata) { # define the function to run
+  pep_infiles, function(infile) { # define the function to run
+    
+    infdata <- read.delim(
+      system.file("extdata", infile, package = "Proteomics.data.analysis"))
+    
     parse_features(infdata,
                    silac = TRUE,
                    level = 'peptide',
@@ -137,13 +148,11 @@ Next, we add new columns to describe the intensities with respect to the CL and 
 
 ```{r}
 
-# Define a function name to take the experiment name and annotate the data
+# Define a function name to take the replicate number and annotate the data
 
-annotate_parsed_data <- function(experiment){
-  # In this case, the replicate number is after the '_' so we extract like so
-  rep_n <- sapply(strsplit(experiment, split='_'), '[[', 2) 
+annotate_parsed_data <- function(rep_n){
   
-  pep_data <- pep_data_parsed[[experiment]]
+  pep_data <- pep_data_parsed[[rep_n]]
   
   # Identify the column names for the light and heavy intensities
   # (these names are not consistent between samples, yours may be different!)
@@ -160,26 +169,29 @@ annotate_parsed_data <- function(experiment){
            'NC' = !!sym(nc_col),
            Replicate = rep_n) %>%
     # And subset to these columns
-    select(Master.Protein.Accessions, Sequence, Modifications,
-           CL, NC,
+    select(Master.Protein.Accessions,
+           Sequence,
+           Modifications,
+           CL,
+           NC,
            Replicate)
   
   return(pep_data)
 }
 
-# Apply the function over the 
-pep_data_parsed <- lapply(names(pep_data_parsed), # annotate_parsed_data function using the name
+# Apply the function to all peptide data.frames
+annot_pep_data_parsed <- lapply(names(pep_data_parsed), # annotate_parsed_data function using the name
                           annotate_parsed_data)
 
-# Re-annotate with names
-names(pep_data_parsed) <- names(pep_data)
+# Re-annotate with the names
+names(annot_pep_data_parsed) <- names(pep_data_parsed)
 ```
 
 
-Now that we have added the replicate number as a column, we can bind together the rows from all replicates to keep all our data in a single object. 
+Now that we have added the replicate number as a column, we can bind together the rows from all replicates to keep all our data in a single `data.frame`. 
 
 ```{r}
-abundance_data_complete <- do.call('rbind', pep_data_parsed) %>% 
+abundance_data_complete <- do.call('rbind', annot_pep_data_parsed) %>% 
   remove_rownames()
 ```
 
@@ -194,37 +206,42 @@ ratios <- abundance_data_complete %>%
 
 Below, we tally and plot the missing values per replicate for each method. Note that ~40% of peptides have a missing quantification value and it's much more likely to be missing in NC than CL. This is what we expect since the OOPS method is designed to capture RBPs that are UV crosslinked to RNA, so without crosslinking, there should be very little protein present in the interface.
 
-```{r, fig.height=3, fig.width=6}
-ratios %>%
-  group_by(Replicate, missing) %>%
-  tally() %>%
-  ggplot(aes(x = Replicate, y = n, fill = missing)) +
-  geom_bar(stat = 'identity', position = 'fill', colour = 'grey50') +
-  theme_camprot(border = FALSE) +
-  labs(, y = 'Fraction') + 
-  scale_fill_manual(values = get_cat_palette(3), name = '')
-
-ratios %>%
-  group_by(Replicate, missing) %>%
-  tally() %>%
-  ggplot(aes(x = Replicate, y = n, fill = missing)) +
-  geom_bar(stat = 'identity', position = 'stack', colour = 'grey50') +
-  theme_camprot(border = FALSE) +
-  labs( y = 'Peptides') + 
-  scale_fill_manual(values = get_cat_palette(3), name = '')
-```
-
-
-Next, we plot the distribution for the ratios.
 ```{r, fig.height=4, fig.width=6}
-ratios %>% 
-  ggplot(aes(x = ratio, colour = Replicate)) +
-  geom_vline(xintercept = 0, linetype = 2, colour = 'grey50') +
-  geom_density() +
-  theme_camprot(base_size = 15) +
-  labs(x = "Ratio CL:NC (Log2)", y = "Density") +
-  scale_colour_manual(values = c(get_cat_palette(4)))
+# Tally the missing values
+missing_tallies <- ratios %>%
+  group_by(missing) %>%
+  tally()
+
+missing_tallies %>%
+  ggplot(aes(x = missing, y = n)) +
+  theme_camprot(border = FALSE) + 
+  geom_bar(stat = 'identity', colour = 'grey50') +
+  labs(y='Peptides', x='') +
+  theme(axis.text.x=element_text(angle=45, vjust=1, hjust=1))
+
 ```
+
+
+> ### Exercise 1
+>
+> Modify the code above so that rather than showing one bar each for every
+> level of missing status, it shows a stacked bar for each replicate, where the fill
+> denotes the missing status (see below for how it should look)
+
+
+### Solution
+```{r class.source = 'fold-hide', fig.height=3, fig.width=6}
+missing_tallies <- ratios %>%
+  group_by(Replicate, missing) %>%
+  tally()
+
+missing_tallies %>%
+  ggplot(aes(x = Replicate, y = n, fill = missing)) +
+  theme_camprot(border = FALSE) + 
+  geom_bar(stat = 'identity', position = 'fill') +
+  labs(y = 'Fraction', fill='')
+```
+
 
 
 
@@ -234,23 +251,25 @@ To get the information about what quantification values come from PSMs, we need 
 
 ```{r}
 # These files are part of this package
-psm_data <- list(all_psm_oops_1, all_psm_oops_2, all_psm_oops_3, all_psm_oops_4)
-names(psm_data) <- c('psm_1', 'psm_2', 'psm_3', 'psm_4')
+psm_infiles <- gsub('_PeptideGroups.txt', '_PSMs.txt', pep_infiles)
 ```
 
 
-Below we use `camprotR::silac_psm_seq_int` to identify which quantification values are from PSMs. This function also extracts the interference/co-isolation value for the PSMs, which is not available through the peptide-level output, though we won't use that information here.
+Below we use `camprotR::silac_psm_seq_int` to identify which quantification values are from PSMs. 
 
-```{r, echo=FALSE}
+```{r,message=FALSE}
 psm_matched_data <- lapply(
-  psm_data, function(x) {
+  psm_infiles, function(infile) {
+    infdata <- read.delim(
+      system.file("extdata", infile, package = "Proteomics.data.analysis"))
+    
     # If you export from PD including the 'Sequence' column, 
     # you don't need this step.
     # Below, we convert the Annotated.Sequence column into a Sequence column
-    x$Sequence <- sapply(strsplit(x$Annotated.Sequence, split = '\\.'), '[[', 1) %>%
+    infdata$Sequence <- sapply(strsplit(infdata$Annotated.Sequence, split = '\\.'), '[[', 1) %>%
       toupper()
     
-    camprotR::silac_psm_seq_int(x, sequence_col = 'Sequence')
+    camprotR::silac_psm_seq_int(infdata, sequence_col = 'Sequence')
   }
 )
 ```
@@ -261,34 +280,37 @@ Then we bind together the spectrum matched data into one data frame, ready to me
 ```{r}
 all_psm_matched_data <- psm_matched_data %>%
   names() %>%
-  lapply(function(psm_name) {
-    rep_n <- sapply(strsplit(psm_name, split='_'), '[[', 2) 
-    psm_matched_data[[psm_name]] %>%
+  lapply(function(rep_n) {
+    psm_matched_data[[rep_n]] %>%
       mutate(Replicate = rep_n)
   }) %>% 
   bind_rows()
 ```
 
 
-Below, we merge the quantification and PSM information and make new columns to describe whether the CL/NC quantification is from a PSM.
+Below, we merge the quantification and PSM information and make new columns to describe whether the CL/NC quantification is from a PSM. Note that we need to update the `Modifications` and `Sequence` columns in the peptide-level output so they can be matched to the columns in the PSM-level columns.
 
 ```{r}
 # merge the matched information and add new columns for the CL/NC matched information
 ratios_matched <- ratios %>%
+  
   # Update the modifications column for the peptide object so it 
   # doesn't include SILAC modifications 
   mutate(Modifications = remove_silac_modifications(Modifications, level = 'peptide')) %>%
+  
   # Update the sequence column to all uppercase
-  rowwise() %>% 
-  mutate(Sequence = toupper(Sequence)) %>%
+  rowwise() %>% mutate(Sequence = toupper(Sequence)) %>%
+  
   # Merge with the sequenced information
   merge(all_psm_matched_data, 
         by = c('Sequence', 'Modifications', 'Replicate'))  %>%
-  # Add new columns with CL/NC and CL/NC matched information
-  mutate('Matched_CL' = ifelse(Replicate %in% 1:2, 
-                                 matched_Heavy, matched_Light),
-         'Matched_NC' = ifelse(Replicate %in% 1:2, 
-                                 matched_Light, matched_Heavy)) %>%
+  
+  # Add new columns with CL/NC matched information using the
+  # matched_Heavy and matched_Light columns and the label swap information
+  # (rep1/2, CL=H; rep3/4 CL=L)
+  mutate('Matched_CL' = ifelse(Replicate %in% 1:2, matched_Heavy, matched_Light),
+         'Matched_NC' = ifelse(Replicate %in% 1:2, matched_Light, matched_Heavy)) %>%
+  
   # And subset to these columns
   select(Master.Protein.Accessions,
          Sequence, 
@@ -301,7 +323,7 @@ ratios_matched <- ratios %>%
          Matched_NC,
          missing)
 
-# Add a single column to describe the sequenced information
+# Add a single column to describe the matched information across the two conditions
 ratios_matched <- ratios_matched %>%
   mutate(
     matched = interaction(Matched_CL, Matched_NC),
@@ -316,29 +338,24 @@ ratios_matched <- ratios_matched %>%
 ```
 
 
-Below, we consider how often the ratio comes from a peptide where both CL and NC were spectrum matched, or just one spectrum sequenced, and the other one therefore being by mass shift. Note that a minority of peptides have both CL and NC sequenced and the majority are just sequenced in CL.
+Below, we consider how often the ratio comes from a peptide where both CL and NC were spectrum matched, or just one spectrum matched, and the other one therefore being by mass shift. Note that a minority of peptides have both CL and NC sequenced and the majority are just sequenced in CL.
 
 ```{r, fig.height=4, fig.width=6}
-p <- ratios_matched %>%
+# Tally the peptide match status
+matched_tallies <- ratios_matched %>%
   filter(is.finite(ratio)) %>%
   group_by(Replicate, matched) %>% 
-  tally() %>%
+  tally()
+
+# Plot as stacked bar plot
+matched_tallies %>% 
   ggplot(aes(x = Replicate, y = n, fill = matched)) +
+  geom_bar(stat = 'identity', position='fill', colour = 'grey50') +
   theme_camprot(border = FALSE) +
   scale_fill_manual(values = get_cat_palette(3), name = '') +
-  xlab('Replicate')
-
-p1 <- p +
-  geom_bar(stat = 'identity', colour = 'grey50') +
-  ylab('Peptides')
-
-print(p1)
-
-p2 <- p +
-  geom_bar(stat = 'identity', position = 'fill', colour = 'grey50') +
+  xlab('Replicate') +
   ylab('Fraction of peptides')
 
-print(p2)
 ```
 
 
@@ -349,12 +366,8 @@ We can then see consider how the correlated between CL and NC relates to the 'sp
 
 When just CL is matched, the correlation is less clear and the two populations are not obvious. One plausible explanation is that many of the NC quantification values obtained when CL is identified by spectrum matching, but NC is identified by mass shift, are from ions erroneously assigned to a peptide. This would be a concern.
 
-```{r, fig.width=8, fig.height=8}
-ratios_matched %>%
-  filter(is.finite(CL), is.finite(NC)) %>%
-  group_by(matched) %>%
-  summarise(cor = cor(CL, NC))
 
+```{r, fig.width=8, fig.height=8}
 ratios_matched %>%
   ggplot(aes(x = CL, y = NC)) +
   geom_point(size = 0.5, alpha=0.5) +
@@ -365,6 +378,23 @@ ratios_matched %>%
   scale_y_continuous(breaks = seq(14, 26, 4), limits = c(14, 26)) +
   xlab('CL (log2)') +
   ylab('NC (log2)')
+```
+
+Below, we quantify the correlations
+```{r}
+cl_nc_correlations <- ratios_matched %>%
+  filter(is.finite(CL), is.finite(NC)) %>%
+  group_by(matched, Replicate) %>%
+  summarise(cor = cor(CL, NC))
+
+cl_nc_correlations %>%
+  ggplot(aes(matched, cor, colour=Replicate)) +
+  geom_point() +
+  theme_camprot(border = FALSE, base_size=15) +
+  theme(axis.text.x=element_text(angle=45, vjust=1, hjust=1)) +
+  xlab('') +
+  ylab('Pearson correlation') +
+  scale_colour_manual(values=get_cat_palette(4))
 ```
 
 
@@ -378,29 +408,16 @@ Since each of the SILAC samples was processed separately, the assignments of pep
 
 `camprotR::get_parsimony_pep2prot()` will take a list of files, each with Sequence, Protein.Acession and Master.Protein.Accession columns and generate a unified peptide sequence to master protein assignment. This is done by an approximately parsimonous approach, which is not identical to PD. The function therefore also summarises the difference between the PD assignments and the updated assignment, which is normally very little.
 
-`get_parsimony_pep2prot` expects the input to be filepaths, not data.frames, which is what we have. We get around this here by writing the data.frames to temporary files. For a normal data analysis workflow, this would not be neccessary.
-```{r}
-# set up a temporary directory to save the files
-tmp_dir <- './tmp'
-dir.create(tmp_dir)
-
-# Save the data.frames to temporary files
-for(pep_data_frame in pep_data){
-  write.table(pep_data_frame,
-              file=tempfile(tmpdir = tmp_dir), # tempfile generates a random file name
-              row.names=FALSE, sep='\t')
-}
-
-# Identify the names of the temporary filenames
-pep_data_files <- Sys.glob(file.path(tmp_dir, '*'))
-
+```{r, fig.height=5, fig.width=5}
+read.delim(system.file("extdata", pep_infiles[[1]], package = "Proteomics.data.analysis")) %>% colnames()
 # Create a unified peptide sequence to protein assignment
-new_seq_to_master <- camprotR::get_parsimony_pep2prot(pep_data_files)
+new_seq_to_master <- pep_infiles %>%
+  lapply(function(x) system.file("extdata", x, package = "Proteomics.data.analysis")) %>%
+  camprotR::get_parsimony_pep2prot()
 
-# Remove the temporary directory
-unlink(tmp_dir, recursive=TRUE)
 ```
-Next, we remove peptides without both CL and NC, e.g no quantified ratio, and then merge on the updated master protein assignments
+
+Next, we remove peptides without both CL and NC, e.g no quantified ratio, and then merge with the updated master protein assignments
 ```{r}
 # Remove peptides without both CL + NC quantified
 flt_ratios <- ratios_matched %>%
@@ -443,27 +460,17 @@ pep_res
 ```
 
 
-Then we summarise the peptide-level ratios to protein-level ratios. Here, we'll use the median and demand at least three ratios per protein.
+Then we summarise the peptide-level ratios to protein-level ratios. Here, we'll use the median. 
 
 ```{r, fig.height=4, fig.width=4}
-# see ?camprotR::restrict_features_per_protein for more details
-# In particular, note that the function will replace some quantification values 
-# with NA, while removing some other peptides entirely
-pep_res_flt <- camprotR::restrict_features_per_protein(
-  pep_res, 
-  min_features = 3, 
-  plot = TRUE
-)
-
 prot_res <- combineFeatures(
-  pep_res_flt, 
-  groupBy = fData(pep_res_flt)$Master.Protein.Accessions,
+  pep_res, 
+  groupBy = fData(pep_res)$Master.Protein.Accessions,
   method = "median",
   na.rm = TRUE
-)
+) 
 
 print(nrow(pep_res))
-print(nrow(pep_res_flt))
 print(nrow((prot_res)))
 ```
 
@@ -471,7 +478,7 @@ print(nrow((prot_res)))
 Note that the summarisation is occurring on the expression data, but will affect the feature data too (the values in the first feature are taken). If we want to retain information about whether the peptide was 'matched' in both conditions, we will need to generate this ourselves and re-attach to the MSnSet.
 
 ```{r}
-prot_matched_nc <- fData(pep_res_flt) %>%
+prot_matched_nc <- fData(pep_res) %>%
   select(-Sequence, -Modifications) %>% 
   pivot_longer(cols = -Master.Protein.Accessions, values_to = 'Matched_NC') %>%
   group_by(Master.Protein.Accessions) %>%
@@ -494,9 +501,32 @@ MSnbase::plotNA(prot_res, pNA = 0)
 ```
 
 
+> ### Exercise 2
+>
+> We have used `MSnbase::plotNA` to assess the missing values but it's 
+> straightforward to do this ourselves directly from the `prot_res` object.
+> Remembering that `exprs()` can be used to extract the abundance matrix from an
+> `MSnSet`, answer the following:
+>
+> 1. How many values are missing in total?
+> 2. What fraction of values are missing?
+> 3. How many missing values are there in each sample?
+> 4. How many proteins have exactly 1 missing value?
+
+
+### Solution
+```{r class.source = 'fold-hide'}
+
+sum(is.na(prot_res)) #1
+mean(is.na(prot_res)) #2
+colSums(is.na(prot_res)) #3 
+table(rowSums(is.na(prot_res))) #4
+```
+
+
 To identify proteins with significantly increased abundance in CL vs NC, we will use DEqMS [@http://zotero.org/users/5634351/items/RTM6NFVU], which you can think of as an extension of limma [@http://zotero.org/users/5634351/items/6KTXTWME] specifically for proteomics. 
 
-The next step is taken from the [DEqMS vignette](https://bioconductor.org/packages/release/bioc/vignettes/DEqMS/inst/doc/DEqMS-package-vignette.html#extract-quant-data-columns-for-deqms). The idea is that we want to create an `MArrayLM` object as per normal `limma` analysis and then  add a `$count` column to the `MArrayLM` object and then use the `spectraCounteBayes` function to perform the Bayesian shrinkage using the count column rather than the `$Amean` column. In our case, `count` is the number of peptides per protein. In the DEqMS paper, they suggest that the best summarisation metric to use is the minimum value across the samples. 
+The next step is taken from the [DEqMS vignette](https://bioconductor.org/packages/release/bioc/vignettes/DEqMS/inst/doc/DEqMS-package-vignette.html#extract-quant-data-columns-for-deqms). The idea is that we want to create an `MArrayLM` object as per normal `limma` analysis and then  add a `$count` column to the `MArrayLM` object and then use the `spectraCounteBayes` function to perform the Bayesian shrinkage using the count column (which describes the number of pepitdes per protein) rather than the `$Amean` column (which describes the mean CL:NC ratio). In the DEqMS paper, they suggest that the best summarisation metric to use is the minimum value across the samples, so our `count` columns is the minimum number of peptides per protein.  
 
 ```{r}
 dat <- prot_res %>% 
@@ -531,15 +561,15 @@ efit_deqms <- suppressWarnings(spectraCounteBayes(efit))
 ```
 
 
-Unfortunately, since we have so few proteins in this toy dataset, the relationship between PSM count and variance is not apparent, though it should be with a full-scale proteomics experiment.
+In this case the relationship between peptide count and variance is only really apparent when the minimum number of peptides from which a protein-level ratio is obtained is very low. Typically, one might remove quantifications where there is just a single peptide for a protein. Here, we will keep them, and we can refer to the `count` column in the final results object if we want to check the minimum numbber of peptides observed per sample.
 
 ```{r, fig.height=4, fig.width=4}
 # Diagnostic plots
-VarianceBoxplot(efit_deqms, n = 30, xlab = "Peptide count")
+VarianceBoxplot(efit_deqms, n = 30, xlab = "Peptides")
 ```
 
 
-Below, we summarise the number of proteins with statistically different abundance in CL vs NC and plot a 'volcano' plot to visualise this. Note that all 24 proteins with a statistically significant change are increased in CL, so the plot looks more like a fire-hose than a volcano!
+Below, we summarise the number of proteins with statistically different abundance in CL vs NC and plot a 'volcano' plot to visualise this. Note that all proteins with a statistically significant change are increased in CL, so the plot looks more like a fire-hose than a volcano!
 
 ```{r, fig.height=5, fig.width=5}
 deqms_results <- outputResult(efit_deqms, coef_col = 1)
@@ -556,10 +586,9 @@ deqms_results %>%
 ```
 
 
-Finally, we can explore and export out results. Importantly, the `$t`, `$P.Value` and `$adj.P.Val` columnts are from `limma`. The columns prefixed with `sca` are the from `DEqMS`.
+Finally, we can explore and, if we wish, export our results. Importantly, the `$t`, `$P.Value` and `$adj.P.Val` columnts are from `limma`. The columns prefixed with `sca` are the from `DEqMS`. 
 
 ```{r}
 head(deqms_results)
+
 ```
-
-
