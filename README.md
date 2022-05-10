@@ -8,10 +8,10 @@ MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/
 <!-- badges: end -->
 
 The `Proteomics.analysis.data` package was prepared by the MRC
-Toxicology unit and Proteomics and
-[bioinformaticsfacilities](https://github.com/MRCToxBioinformatics) to
-provide data for training sessions covering the basics of proteomics
-analyses.
+Toxicology unit
+[Bioinformatics](https://www.mrc-tox.cam.ac.uk/facilities/bioinformatics)
+facility to provide data for training sessions covering the basics of
+proteomics analyses.
 
 ## Install
 
