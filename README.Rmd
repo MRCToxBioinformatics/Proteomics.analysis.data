@@ -16,3 +16,19 @@ facility to provide data for training sessions covering the basics of proteomics
 ```{r, eval=FALSE}
 remotes::install_github("MRCToxBioinformatics/Proteomics.analysis.data")
 ```
+
+## Data
+You can see the available data sets using the following
+```{r, eval=FALSE}
+list.files(system.file("extdata", package = "Proteomics.analysis.data"))
+```
+
+Note that the extdata is organised in subdirectories. Files will always have a suffix.
+To see the files in the subdirectory, use, e.g
+```{r, eval=FALSE}
+list.files(system.file("extdata/OOPS_SILAC", package = "Proteomics.analysis.data"))
+```
+
+## Documentation
+Data files documentation can be obtained via `help(package="Proteomics.analysis.data")`
+
